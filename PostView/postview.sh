@@ -197,7 +197,7 @@ update_document () {
   if [[ $GSOPT_BG -eq 1 ]]; then bg=$GSOPT_BG_FILE; else bg=; fi
 
   render pngalpha $DIR/gsout-%03d.png $bg
-  if [[ -n $ERRORS ]]; then
+  if [[ ! -e $DIR/gsout-001.png ]]; then
     set_errors "$ERRORS"
   else
     clear_errors
