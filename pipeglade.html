@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>pipeglade</title>
+<style type="text/css">
+.section {
+  margin-left: 1em;
+  margin-right: 1em;
+}
+code {
+  background-color: #ddf;
+  font-family: monospaced;
+  font-style: normal;
+}
+var {
+  background-color: #fdd;
+  font-family: monospaced;
+  font-style: normal;
+}
+samp {
+  background-color: #dfd;
+  font-family: monospaced;
+  font-style: normal;
+}
+pre {
+  padding: .5em;
+  margin-left: 2em;
+  margin-right: 2em;
+  background-color: #dfd;
+}
+table {
+  margin-left: 2em;
+  margin-right: 2em;
+}
+td {
+  min-width: 2em;
+}
+</style>
+</head>
+<body>
+
+<h1>PipeGlade</h1>
+<div class="section">
+
+<p><span class="desc">Pipe-Driven GTK+ Interface</span></p>
+
+</div>
+<h2><a name="description">Description</a></h2>
+<div class="section">
+
+<p><code>pipeglade</code>
+ is a helper program that displays graphical user interfaces for other 
+programs.  It renders the GUI definition found in a GtkBuilder XML file 
+(created using the <a class="link-man">glade(1)</a> interface designer),
+ and communicates with the main program solely through plain text 
+messages via pipes or fifos.  It provides access to a subset of features
+ of a subset of widgets of GTK+3.  Simple one-shot dialogs as well as 
+more complex, long-running programs can be built using <code>pipeglade</code>
+(see <a class="link-sec" href="#examples">Examples</a>).</p>
+
+</div>
+<h2><a name="options">OPTIONS</a></h2>
+<div class="section">
+
+<p><code>pipeglade</code> [<var>OPTION...</var>] <var>file1.ui...</var></p>
+
+<dl class="list">
+
+<dt><var>file1.ui...</var></dt>
+<dd>
+<p>Displays the graphical user interfaces described in the specified files.
+At least one file name is required.</p>
+</dd>
+
+<dt><code>-i, --infifo=</code><var>in-fifo</var></dt>
+<dd>
+<p>Creates a named pipe <var>in-fifo</var> if necessary, and uses it for input.
+It is an error if <var>in-fifo</var> exists but is not a named pipe.
+The named pipe <var>in-fifo</var> is deleted upon successful program termination.
+Default is <code>stdin</code>.
+See <a class="link-sec" href="#guimanip">Gui Manipulation Commands</a>
+for a list of commands understood by <code>pipeglade</code>.</p>
+</dd>
+
+<dt><code>-o, --outfifo=</code><var>out-fifo</var></dt>
+<dd>
+<p>Creates a named pipe <var>out-fifo</var> if necessary, and uses it for output.
+It is an error if <var>out-fifo</var> exists but is not a named pipe.
+The named pipe <var>out-fifo</var> is deleted upon successful program termination.
+Default is <code>stdout</code>.
+See <a class="link-sec" href="#guifeedback">Gui Feedback Messages</a>
+for a description of possible output.</p>
+</dd>
+
+<dt><code>-e, --escape=</code><var>char</var></dt>
+<dd>
+<p>The escape character to use in both input and output messages. The character cannot be an ASCII
+white-space character. The default is the backslash (&ldquo;\&rdquo;).</p>
+</dd>
+
+<dt><code>-s, --string=</code><var>two-chars</var></dt>
+<dd>
+<p>The open and close quote characters for strings in both input and output
+messages. If <var>two-chars</var> is only one character, it will be used
+for both open and close quotes. If <var>two-chars</var> is the empty string, no
+quotes will be recognized and any argument containing white-space must have
+its white-space escaped using the escape character. The default values are
+double-quotes (&ldquo;""&rdquo;).</p>
+</dd>
+
+<dt><code>-V, --version</code></dt>
+<dd>
+<p>Prints the version information for <code>pipeglade</code> and GTK+ then exits.</p>
+</dd>
+
+<dt><code>-h, --help</code></dt>
+<dd>
+<p>Prints a help message and exits.</p>
+</dd>
+</dl>
+
+</div>
+<h2><a name="interfacecreation">Interface Creation (Using Glade)</a></h2>
+<div class="section">
+
+<p>The interface should be created using the <a class="link-man">glade(1)</a>
+user interface designer and saved in GtkBuilder (.ui) format. The main window 
+must be named <code>window</code>. Widgets that must send and receive
+messages must have names.</p>
+
+<p>Many widgets will automatically have callbacks associated with the
+appropriate events to detect a change in the widget's value. These
+actions will send a message through the output pipe containing the widget
+name, the action name <code>value</code>, and the new value(s). Simple buttons
+and menu items will send <code>command</code> actions.
+(See <a class="link-sec" href="#guifeedback">Gui Feedback Messages</a>
+for more information.)</p>
+
+<p>All widgets supporting tree models may be backed by either tree stores
+or list stores.</p>
+
+<p>One feature that might be surprising is the inclusion of an Undo history
+for all GtkTextBuffer- and GtkEntryBuffer-based widgets. Each buffer
+will have its own history, and each view will have
+&ldquo;Undo&rdquo; and &ldquo;Redo&rdquo; keys and context menu entries.
+The keys are <code>Ctrl-Z</code> for undo, and <code>Ctrl-Y</code> and
+<code>Shift-Ctrl-Z</code> for redo.</p>
+
+<p>[The GtkEntry undo behavior isn't as refined as I would like, since the
+current implementation of GtkEntryBuffer is uncooperative (the insert and
+delete signals are fired after the buffer is modified). The current behavior
+is to simply replace the entire content of the entry at every undo or redo.
+Because of this, the cursor will be reset to the beginning of the buffer. -toa]</p>
+
+</div>
+<h2><a name="guimanip">Gui Manipulation Commands</h2>
+<div class="section">
+
+<p>A command is a line of text. Lines whose first non-white-space character
+is <code>#</code> are considered comments and ignored.</p>
+
+<p>The input line will be parsed into a series of white-space-separated
+words. Words containing white-space may either escape the white-space using
+the current escape character (defined via <a href="#options">the command line</a>)
+or enclose the word in the current quote characters (also defined via the
+command line). Furthermore, the following escape sequences are recognized.
+Any character not listed will escape to itself.</p>
+
+<table summary="Escape Sequences">
+<tr><td><code>\n</code></td><td>Line-feed</td></tr>
+<tr><td><code>\r</code></td><td>Carriage Return</td></tr>
+<tr><td><code>\t</code></td><td>Tab</td></tr>
+</table>
+
+<p>The format of the commands is
+&ldquo;<var>widget-name</var>&nbsp;<var>action</var>&nbsp;<var>data...</var>&rdquo;
+where <var>widget-name</var> is the name of the receiving widget,
+<var>action</var> is the name of the command, and <var>data</var> is
+the argument list for the command. Invalid commands are reported on
+<code>stderr</code> and are otherwise ignored.</p>
+
+<p>An argument type of <code>bool</code> is specified either as <code>0</code>,
+<code>1</code>, <code>true</code>, or <code>false</code>. Output messages
+will always use <code>0</code> or <code>1</code>.</p>
+
+<p>Numeric arguments are given in <code>strtol(3)</code> syntax for a radix
+argument of <code>0</code>.</p>
+
+<p>Arguments of type <code>tree-path</code> are as described in
+<a href="https://developer.gnome.org/gtk3/stable/GtkTreeModel.html">GtkTreeModel</a>:</p>
+
+<blockquote>
+<p>A path is essentially a potential node. It is a location on a model that may
+or may not actually correspond to a node on a specific model. The GtkTreePath
+can be converted into either an array of unsigned integers or a string. The
+string form is a list of numbers separated by a colon. Each number refers to
+the offset at that level. Thus, the path <code>0</code> refers to the root node and the
+path <code>2:4</code> refers to the fifth child of the third node.</p>
+</blockquote>
+
+<p>Some commands take additional keywords as paths, e.g., <code>end</code>.</p>
+
+<p>Arguments of type <code>color</code> can be given as:</p>
+
+<ul>
+<li>a standard X11 color name, like &ldquo;<code>Dark Sea Green</code>&rdquo;,</li>
+<li>a hexadecimal value in the form <code>#</code><var>rgb</var>,
+    <code>#</code><var>rrggbb</var>, <code>#</code><var>rrrgggbbb</var>,
+    or <code>#</code><var>rrrrggggbbbb</var>,</li>
+<li>an RGB color in the form
+    <code>rgb(</code><var>r</var><code>,</code><var>g</var><code>,</code><var>b</var><code>)</code>,
+    or</li>
+<li>an RGBA color in the form
+    <code>rgba(</code><var>r</var><code>,</code><var>g</var><code>,</code><var>b</var><code>,</code><var>a</var><code>)</code>.</li>
+</ul>
+
+<p>The last two are the formats used in <a class="link-sec" href="#guifeedback">Gui Feedback Messages</a>.</p>
+
+<p>The widget types and their commands are as follows:</p>
+
+<h3><a name="manip-gtkany">Any Widget</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>main_quit</code></dt>
+<dd>
+<p>Exit the program. A <var>widget-name</var> is required but ignored.</p>
+</dd>
+
+<dt><code>close</code></dt>
+<dd>
+<p>Hide the top-level window of the widget.</p>
+</dd>
+
+<dt><code>hide</code></dt>
+<dd>
+<p>Hide the widget.</p>
+</dd>
+
+<dt><code>set_sensitive</code> <var>bool</var></dt>
+<dd>
+<p>Set the sensitivity of the widget.</p>
+</dd>
+
+<dt><code>set_visible</code> <var>bool</var></dt>
+<dd>
+<p>Set the visibility of the widget.</p>
+</dd>
+
+<dt><code>show</code></dt>
+<dd>
+<p>Show the widget.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkcheckbutton">GtkCheckButton</a>,
+<a name="manip-gtkcheckmenuitem">GtkCheckMenuItem</a>,
+<a name="manip-gtkradiobutton">GtkRadioButton</a>,
+<a name="manip-gtkradiomenuitem">GtkRadioMenuItem</a>,
+<a name="manip-gtkradiotoolbutton">GtkRadioToolButton</a>,
+<a name="manip-gtkswitch">GtkSwitch</a>,
+<a name="manip-gtktogglebutton">GtkToggleButton</a>,
+<a name="manip-gtktoggletoolbutton">GtkToggleToolButton</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>send_value</code></dt>
+<dd>
+<p>Send a message containing the active state of the widget. The
+message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_active</code> <var>bool</var></dt>
+<dd>
+<p>Set the active state of the widget.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkcolorbutton">GtkColorButton</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>send_value</code></dt>
+<dd>
+<p>Send a message containing the color value of the button. The
+message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_color</code> <var>color</var></dt>
+<dd>
+<p>Set the color value of the button.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkcombobox">GtkComboBox</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>append</code> <var>data...</var></dt>
+<dd>
+<p>Append a row of data to the combo-box's data store. The <var>data</var>
+arguments specify each column's value.</p>
+</dd>
+
+<dt><code>append_to</code> <var>parent-path</var> <var>data...</var></dt>
+<dd>
+<p>Append a row of data to the parent node's children. The <var>data</var>
+arguments specify each column's value.</p>
+</dd>
+
+<dt><code>insert</code> <var>row-path</var> <var>data...</var></dt>
+<dd>
+<p>Insert a row of data before the row currently at <var>row-path</var>. If
+<var>row-path</var> is <code>end</code>, the row will be appended to the data store.
+The <var>data</var> arguments specify each column's value.</p>
+</dd>
+
+<dt><code>move</code> <var>src-path</var> <var>dst-path</var></dt>
+<dd>
+<p>Move a row of data to a different location. If <var>dst-path</var> is
+<code>end</code>, the row will be moved to the end of the data store.</p>
+</dd>
+
+<dt><code>remove</code> <var>start-path</var> <var>end-path</var></dt>
+<dd>
+<p>Remove the rows from <var>start-path</var> (inclusive) to
+<var>end-path</var> (exclusive). If <var>end-path</var> is
+omiited, only <var>start-path</var> will be removed. If <var>end-path</var>
+is <code>end</code>, every row from <var>start-path</var> until the end
+will be removed. If both paths are omitted, all rows will be removed.</p>
+</dd>
+
+<dt><code>select</code> <var>index</var></dt>
+<dd>
+<p>Select the row at <var>index</var>.</p>
+</dd>
+
+<dt><code>select_id</code> <var>id</var></dt>
+<dd>
+<p>Select the row with the given <var>id</var>.</p>
+</dd>
+
+<dt><code>send_selection</code></dt>
+<dd>
+<p>Send a message containing the currently selected value of
+the widget. This will be the currently entered text for an editable
+combo-box, or the row id for a non-editable combo-box. The
+message's type name will be <code>selection</code>.</p>
+</dd>
+
+<dt><code>send_value</code> <var>row-path</var> <var>column</var></dt>
+<dd>
+<p>Send a message containing the data store value for
+the specified data cell. If <var>column</var> is omitted, the
+message will contain values for each column. The
+message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_row</code> <var>row-path</var> <var>data...</var></dt>
+<dd>
+<p>Set the data at <var>row-path</var>. The <var>data</var> arguments
+specify each column's value.</p>
+</dd>
+
+<dt><code>set_cell</code> <var>row-path</var> <var>column</var> <var>data</var></dt>
+<dd>
+<p>Set the data for the cell at <var>row-path</var> and <var>column</var> index.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkcomboboxtext">GtkComboBoxText</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>append</code> <var>data...</var></dt>
+<dd>
+<p>Appends the <var>data</var> to the combo-box. Each argument in <var>data</var>
+is a separate row entry.</p>
+</dd>
+
+<dt><code>insert</code> <var>index</var> <var>data...</var></dt>
+<dd>
+<p>Inserts the <var>data</var> before the data currently at <var>index</var>.
+If <var>index</var> is <code>end</code>, the <var>data</var> wil be appended.
+Each argument in <var>data</var> is a separate row entry.</p>
+</dd>
+
+<dt><code>move</code> <var>src-index</var> <var>dst-index</var></dt>
+<dd>
+<p>Move a row of data to a different location. If <var>dst-index</var> is
+<code>end</code>, the row will be moved to the end of the combo-box.</p>
+</dd>
+
+<dt><code>remove</code> <var>start-index</var> <var>end-index</var></dt>
+<dd>
+<p>Remove the rows from <var>start-index</var> (inclusive) to
+<var>end-index</var> (exclusive). If <var>end-index</var> is
+omiited, only <var>start-index</var> will be removed. If <var>end-index</var>
+is <code>end</code>, every row from <var>start-index</var> until the end
+will be removed. If both indexes are omitted, all rows will be removed.</p>
+</dd>
+
+<dt><code>select</code> <var>index</var></dt>
+<dd>
+<p>Select the row at <var>index</var>.</p>
+</dd>
+
+<dt><code>send_value</code></dt>
+<dd>
+<p>Send a message containing the currently selected value of
+the combo-box. This will be the currently entered text for an editable
+combo-box, or the row id for a non-editable combo-box. The
+message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_row</code> <var>row-index</var> <var>data</var></dt>
+<dd>
+<p>Set the data at <var>row-index</var>.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkentry">GtkEntry</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>send_value</code></dt>
+<dd>
+<p>Send a message containing the current text of
+the entry. The message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_text</code> <var>text</var></dt>
+<dd>
+<p>Set the text value of the entry.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkfilechooserbutton">GtkFileChooserButton</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>send_value</code></dt>
+<dd>
+<p>Send a message containing the current filename value of
+the button. The message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_filename</code> <var>filename</var></dt>
+<dd>
+<p>Set the filename value of the button.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkfilechooserbutton">GtkFileChooserDialog</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>set_filename</code> <var>filename</var></dt>
+<dd>
+<p>Set the filename or current-name value of a loading or saving dialog.
+If the dialog's action type is &ldquo;save&rdquo; and <var>filename</var>
+does not exist, the <code>gtk_file_chooser_set_current_name</code>
+function will be used to set the value, otherwise
+<code>gtk_file_chooser_set_filename</code> will be used. In other
+words, you don't have to worry about subtle distinctions like
+whether or not a file exists before you select it.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkfontbutton">GtkFontButton</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>send_value</code></dt>
+<dd>
+<p>Send a message containing the current font value of
+the button. The message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_font</code> <var>font</var></dt>
+<dd>
+<p>Set the font value of the button.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkiconview">GtkIconView</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>append</code> <var>data...</var></dt>
+<dd>
+<p>Append a row of data to the widget's data store. The <var>data</var>
+arguments specify each column's value.</p>
+</dd>
+
+<dt><code>insert</code> <var>row-index</var> <var>data...</var></dt>
+<dd>
+<p>Insert a row of data before the row currently at <var>row-path</var>. If
+<var>row-path</var> is <code>end</code>, the row will be appended to the data store.
+The <var>data</var> arguments specify each column's value.</p>
+</dd>
+
+<dt><code>move</code> <var>src-index</var> <var>dst-index</var></dt>
+<dd>
+<p>Move a row of data to a different location. If <var>dst-path</var> is
+<code>end</code>, the row will be moved to the end of the data store.</p>
+</dd>
+
+<dt><code>remove</code> <var>start-index</var> <var>end-index</var></dt>
+<dd>
+<p>Remove the rows from <var>start-index</var> (inclusive) to
+<var>end-index</var> (exclusive). If <var>end-index</var> is
+omiited, only <var>start-index</var> will be removed. If <var>end-index</var>
+is <code>end</code>, every row from <var>start-index</var> until the end
+will be removed. If both paths are omitted, all rows will be removed.</p>
+</dd>
+
+<dt><code>scroll</code> <var>index</var></dt>
+<dd>
+<p>Scroll the widget's view until <var>index</var> is visible.</p>
+</dd>
+
+<dt><code>select</code> <var>index</var></dt>
+<dd>
+<p>Select the row at <var>index</var>.</p>
+</dd>
+
+<dt><code>send_selection</code></dt>
+<dd>
+<p>Send a message containing the index of the currently selected
+row of the widget. The message's type name will be <code>selection</code>.</p>
+</dd>
+
+<dt><code>send_value</code> <var>index</var></dt>
+<dd>
+<p>Send a message containing the data store value for
+the specified data row. The message will contain values for each column.
+The message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_row</code> <var>row-index</var> <var>data...</var></dt>
+<dd>
+<p>Set the data at <var>row-index</var>. The <var>data</var> arguments
+specify each column's value.</p>
+</dd>
+
+<dt><code>set_cell</code> <var>row-index</var> <var>column</var> <var>data</var></dt>
+<dd>
+<p>Set the data for the cell at <var>row-index</var> and <var>column</var>.</p>
+</dd>
+
+<dt><code>unselect</code> <var>index</var></dt>
+<dd>
+<p>Unselect the row at <var>index</var>.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkimage">GtkImage</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>set_file</code> <var>filename</var></dt>
+<dd>
+<p>Set the image to display <var>filename</var>.</p>
+</dd>
+
+<dt><code>set_icon</code> <var>icon-name</var></dt>
+<dd>
+<p>Set the image to display <var>icon-name</var>.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtklabel">GtkLabel</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>set_text</code> <var>text</var></dt>
+<dd>
+<p>Set the label to display <var>text</var>.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkprogressbar">GtkProgressBar</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>set_fraction</code> <var>number</var></dt>
+<dd>
+<p>Set the progress value to <var>number</var> (between 0 and 1).</p>
+</dd>
+
+<dt><code>set_text</code> <var>text</var></dt>
+<dd>
+<p>Set the text displayed inside the progress bar to <var>text</var>.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkscale">GtkScale</a>,
+<a name="manip-gtkspinbutton">GtkSpinButton</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>send_value</code></dt>
+<dd>
+<p>Send a message containing the numeric value of the widget.
+The message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_value</code> <var>number</var></dt>
+<dd>
+<p>Set the value of the widget to <var>number</var>.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkspinner">GtkSpinner</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>start</code></dt>
+<dd>
+<p>Start the spinner.</p>
+</dd>
+
+<dt><code>stop</code></dt>
+<dd>
+<p>Stop the spinner.</p>
+</dd>
+
+<!--
+Did you ever stop and wonder about simple-and-obvious documentation fragments
+like the above, only to realize that the same stuff happens in code too? -toa
+-->
+
+</dl>
+</div>
+<h3><a name="manip-gtkstatusbar">GtkStatusbar</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>pop</code></dt>
+<dd>
+<p>Remove the previous message from the status bar.</p>
+</dd>
+
+<dt><code>push</code> <var>text</var></dt>
+<dd>
+<p>Display the message in the status bar.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtktextview">GtkTextView</a></h3>
+<div class="section">
+
+<p>Some text-view commands accept bounds arguments, which may have the
+following forms:</P>
+
+<table summary="Text buffer boundaries">
+<tr><td>(no arguments)</td><td>the entire buffer</td></tr>
+<tr><td><code>line</code></td><td>the line that the cursor is on</td></tr>
+<tr><td><code>selection</code></td><td>the currently selected text</td></tr>
+<tr><td><var>N</var></td><td>line <var>N</var></td></tr>
+<tr><td><var>N</var> <var>M</var></td><td>lines <var>N</var> (inclusive) to <var>M</var> (exclusive)</td></tr>
+<tr><td><var>N</var> <var>n</var> <var>M</var> <var>m</var></td><td>line/column <var>N/n</var> to line/column <var>M/m</var></td></tr>
+</table>
+
+<dl class="list">
+
+<dt><code>append</code> <var>text</var></dt>
+<dd>
+<p>Append <var>text</var> to the text buffer.</p>
+</dd>
+
+<dt><code>delete</code> <var>bounds</var></dt>
+<dd>
+<p>Delete the text specified by <var>bounds</var>.</p>
+</dd>
+
+<dt><code>insert</code> <var>text</var></dt>
+<dd>
+<p>Insert <var>text</var> into the buffer at the cursor.</p>
+</dd>
+
+<dt><code>moveto</code> <var>position</var></dt>
+<dd>
+<p>Move the cursor to <var>position</var>, which is
+a line number, a line/column pair, or <code>end</code>.</p>
+</dd>
+
+<dt><code>scroll_to_cursor</code></dt>
+<dd>
+<p>Scroll the text view until the cursor is visible.</p>
+</dd>
+
+<dt><code>select</code> <var>bounds</var></dt>
+<dd>
+<p>Select the text specified by <var>bounds</var>.</p>
+</dd>
+
+<dt><code>send_selection</code></dt>
+<dd>
+<p>Send a message containing the selected text.
+The message's type name will be <code>selection</code>.</p>
+</dd>
+
+<dt><code>send_value</code></dt>
+<dd>
+<p>Send a message containing the entire text of the buffer.
+The message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_text</code> <var>text</var></dt>
+<dd>
+<p>Replace the contents of the buffer with <var>text</var>.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtktreeview">GtkTreeView</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>append</code> <var>data...</var></dt>
+<dd>
+<p>Append a row of data to the tree's data store. The <var>data</var>
+arguments specify each column's value.</p>
+</dd>
+
+<dt><code>append_to</code> <var>parent-path</var> <var>data...</var></dt>
+<dd>
+<p>Append a row of data to the parent node's children. The <var>data</var>
+arguments specify each column's value.</p>
+</dd>
+
+<dt><code>insert</code> <var>row-path</var> <var>data...</var></dt>
+<dd>
+<p>Insert a row of data before the row currently at <var>row-path</var>. If
+<var>row-path</var> is <code>end</code>, the row will be appended to the data store.
+The <var>data</var> arguments specify each column's value.</p>
+</dd>
+
+<dt><code>move</code> <var>src-path</var> <var>dst-path</var></dt>
+<dd>
+<p>Move a row of data to a different location. If <var>dst-path</var> is
+<code>end</code>, the row will be moved to the end of the data store.</p>
+</dd>
+
+<dt><code>remove</code> <var>start-path</var> <var>end-path</var></dt>
+<dd>
+<p>Remove the rows from <var>start-path</var> (inclusive) to
+<var>end-path</var> (exclusive). If <var>end-path</var> is
+omiited, only <var>start-path</var> will be removed. If <var>end-path</var>
+is <code>end</code>, every row from <var>start-path</var> until the end
+will be removed. If both paths are omitted, all rows will be removed.</p>
+</dd>
+
+<dt><code>scroll</code> <var>row-path</var> <var>column</var></dt>
+<dd>
+<p>Scroll the view until the cell at <var>row-path</var> and
+<var>column</var>. is visible. The <var>column</var> argument is optional.</p>
+</dd>
+
+<dt><code>send_selection</code></dt>
+<dd>
+<p>Send a message containing the currently selected value of
+the view. The message's type name will be <code>selection</code>.</p>
+</dd>
+
+<dt><code>send_value</code> <var>row-path</var> <var>column</var></dt>
+<dd>
+<p>Send a message containing the data store value for
+the specified data cell. If <var>column</var> is omitted, the
+message will contain values for each column. The
+message's type name will be <code>value</code>.</p>
+</dd>
+
+<dt><code>set_row</code> <var>row-path</var> <var>data...</var></dt>
+<dd>
+<p>Set the data at <var>row-path</var>. The <var>data</var> arguments
+specify each column's value.</p>
+</dd>
+
+<dt><code>set_cell</code> <var>row-path</var> <var>column</var> <var>data</var></dt>
+<dd>
+<p>Set the data for the cell at <var>row-path</var> and <var>column</var>.</p>
+</dd>
+
+</dl>
+</div>
+<h3><a name="manip-gtkwindow">GtkWindow</a></h3>
+<div class="section">
+<dl class="list">
+
+<dt><code>cursor</code> <var>name</var></dt>
+<dd>
+<p>Set the mouse cursor to <var>name</var>. A list of cursor names is available at the
+<a href="https://developer.gnome.org/gdk3/stable/gdk3-Cursors.html#GdkCursorType">GDK 3
+Reference Manual: Cursors</a>. Just remove the &ldquo;GDK_&rdquo; prefix, replace
+underscores (_) with hyphens (-), and lower-case everything else.</p>
+</dd>
+
+<dt><code>maximize</code></dt>
+<dd>
+<p>Maximize the window.</p>
+</dd>
+
+<dt><code>set_title</code> <var>text</var></dt>
+<dd>
+<p>Set the window's title to <var>text</var>.</p>
+</dd>
+
+</dl>
+</div>
+</div>
+<h2><a name="guifeedback">Gui Feedback Messages</a></h2>
+<div class="section">
+
+<p>A message from the graphical user interface is a line of text.
+The message format is
+&ldquo;<var>widget-name</var>&nbsp;<var>type</var>&nbsp;[<var>data</var>]&rdquo;
+where <var>widget-name</var> is the name of the sending widget,
+<var>type</var> is the type of message being sent, and <var>data</var> is
+any further information provided by the message type.</p>
+
+<p>Message sending is initiated by the user changing the value of a widget,
+or by requesting the value of a widget via <code>send</code> commands.
+Setting the value via commands does not send messages.</p>
+
+<P>Examples:</p>
+
+<pre>
+myButton command
+myColorButton value "rgb(2,6,7)"
+mySpinButton value "23.00"
+myTextView selection "Hello, world!"
+</pre>
+
+<p>Pre-defined dialog response IDs include: <code>none</code>, <code>reject</code>,
+<code>accept</code>, <code>okay</code>, <code>cancel</code>, <code>close</code>,
+<code>yes</code>, <code>no</code>, <code>apply</code>, <code>help</code>. All
+other response IDs will be numeric.</p>
+
+<p>The widgets capable of reporting user activity are:</p>
+
+<h3><a name="feedback-gtkbutton">GtkButton</a>,
+<a name="feedback-gtkmenuitem">GtkMenuItem</a>,
+<a name="feedback-gtktoolbutton">GtkToolButton</a></h3>
+<div class="section">
+
+<p>Each simple widget (no toggle, radio, or sub-menus) will report a
+<code>command</code> event when clicked or activated.
+There are no arguments.</p>
+
+</div>
+<h3><a name="feedback-gtkcheckbutton">GtkCheckButton</a>,
+<a name="feedback-gtkcheckmenuitem">GtkCheckMenuItem</a>
+<a name="feedback-gtkradiobutton">GtkRadioButton</a>,
+<a name="feedback-gtkradiomenuitem">GtkRadioMenuItem</a>,
+<a name="feedback-gtkswitch">GtkSwitch</a>,
+<a name="feedback-gtktogglebutton">GtkToggleButton</a>,
+<a name="feedback-gtktoggletoolbutton">GtkToggleToolButton</a></h3>
+<div class="section">
+
+<p>Each toggle widget will report a <code>value</code> event when changed
+by user activity. In the case of radio widgets, two messages
+will be sent on each change: the radio member being toggled off and the
+radio member being toggled on.</p>
+
+<p>The argument is the current state of the widget as a boolean <code>0</code>
+or <code>1</code>.</p>
+
+</div>
+<h3><a name="feedback-gtkcolorbutton">GtkColorButton</a>,
+<a name="feedback-gtkfilechooserbutton">GtkFileChooserButton</a>,
+<a name="feedback-gtkfontbutton">GtkFontButton</a>,
+<a name="feedback-gtkscale">GtkScale</a>,
+<a name="feedback-gtkspinbutton">GtkSpinButton</a></h3>
+<div class="section">
+
+<p>These widgets will report a <code>value</code> event when their
+values are changed. The argument is the new value (color, file name,
+font, or number).</p>
+
+</div>
+<h3><a name="feedback-gtkcombobox">GtkComboBox</a>,
+<a name="feedback-gtkcombobox">GtkComboBoxText</a></h3>
+<div class="section">
+
+<p>These widgets will report a <code>value</code> event when their
+selection is changed, when an editable combo-box's value is activated,
+or when focus leaves a modified editable combo-box's entry.</p>
+
+<p>The argument is the newly selected value of
+the combo-box. This will be the currently entered text for an editable
+combo-box, or the row id for a non-editable combo-box.</p>
+
+</div>
+<h3><a name="feedback-gtkdialog">GtkDialog</a></h3>
+<div class="section">
+
+<p>A dialog will report a response event when the user
+clicks one of the action buttons or closes the dialog. (All action buttons
+will automatically close the dialog.) The message type will
+be the chosen button's response ID. There are no arguments.</p>
+
+</div>
+<h3><a name="feedback-gtkentry">GtkEntry</a></h3>
+<div class="section">
+
+<p>An entry widget will report a <code>value</code> event when the user
+activates the value (i.e., presses &ldquo;Enter&rdquo;) or when focus leaves
+a modified entry.</p>
+
+<p>The argument is the new text value of the entry.</p>
+
+</div>
+<h3><a name="feedback-gtkfilechooserdialog">GtkFileChooserDialog</a></h3>
+<div class="section">
+
+<p>An file chooser dialog will report a response event when the user
+clicks one of the action buttons or closes the dialog. The message type will
+be the chosen button's response ID.</p>
+
+<p>The argument is the selected file name.</p>
+
+</div>
+<h3><a name="feedback-gtkiconview">GtkIconView</a></h3>
+<div class="section">
+
+<p>Icon views are slightly different. An icon view will report a
+<code>selection</code> event whenever an item is activated, regardless
+of whether the selection has changed.</p>
+
+<p>The argument is the index of the currently selected row.</p>
+
+</div>
+<h3><a name="feedback-gtkiconview">GtkTreeView</a></h3>
+<div class="section">
+
+<p>Tree views report a variety of events.</P>
+
+<p>A <code>selection</code> event will be reported whenever the selection
+changes. The arguments will be a list of the selected row paths.</p>
+
+<p>A <code>scroll</code> event will be reported whenever the scroll
+offset changes. The arguments will be the paths of the first and last
+visible rows, if available. If no rows are visible, the arguments
+will be omitted.</p>
+
+<p>A <code>command</code> event will be reported under the <var>name</var> of
+a GtkTreeColumn whenever the user clicks on a column header. There are no
+arguments.</p>
+
+</div>
+</div>
+<h2><a name="examples">Examples</a></h2>
+<div class="section">
+
+<h3><a name="example-interactive">Discovering Pipeglade Interactively</a></h3>
+<div class="section">
+
+<p>Suppose the interface in <var>pipeglade.ui</var> has a
+GtkLabel <var>l1</var> and a GtkButton <var>b1</var>. After invoking</p>
+
+<pre>
+pipeglade pipeglade.ui
+</pre>
+
+<p>and clicking the button, <samp>b1&nbsp;command</samp>
+will be reported on the terminal. Typing</p>
+
+<pre>
+l1 set_text "Button Label"
+</pre>
+
+<p>will change the text shown on the label into &ldquo;Button Label&rdquo;.</p>
+
+</div>
+<h3><a name="example-oneshot-dialog">One-Shot File Dialog</a></h3>
+<div class="section">
+
+<p>Suppose the interface in <var>simple_open.ui</var> contains a
+GtkFileChooserDialog named <var>open1</var> an &lsquo;OK&rsquo;
+GtkButton with a response value of <var>1</var>. Invoking</p>
+
+<pre>
+pipeglade simple_open.ui
+</pre>
+
+<p>will open the dialog. Pressing &lsquo;OK&rsquo; will hide the
+dialog and send <samp>open1&nbsp;1&nbsp;"filename"</samp> to <code>stdout</code>
+(where &ldquo;filename&rdquo; is the name of the selected file).</p>
+
+</div>
+<h3><a name="example-oneshot-notify">One-Shot User Notification</a></h3>
+<div class="section">
+
+<p>If the interface in <var>simple_dialog.ui</var> contains a
+GtkLabel <var>label1</var>, then</p>
+
+<pre>
+pipeglade -s "''" simple_dialog.ui &lt;&lt;&lt; \
+    "label1 set_text 'NOW READ THIS!'"
+</pre>
+
+<p>will set the label text accordingly and wait for user input.</p>
+
+</div>
+<h3><a name="example-continuous-input">Continuous Input</a></h3>
+<div class="section">
+
+<p>The following shell command displays a running clock:</p>
+
+<pre>
+while true; do
+    echo "label1 set_text `date`";
+    sleep 1;
+done | pipeglade simple_dialog.ui
+</pre>
+
+</div>
+<h3><a name="example-continuous-input-output">Continuous Input and Output</a></h3>
+<div class="section">
+
+<p>The following shell script fragment sets up <code>pipeglade</code>
+for continuous communication with another program, <code>main_prog</code>:</p>
+
+<pre>
+pipeglade -i in.fifo -o out.fifo &amp;
+# wait for in.fifo and out.fifo to appear
+while test ! \( -e in.fifo -a -e out.fifo \); do :; done
+main_prog &lt; out.fifo &gt; in.fifo
+</pre>
+
+</div>
+</div>
+<h2><a name="exitstatus">Exit Status</a></h2>
+<div class="section">
+
+<p><code>pipeglade</code> exits 0 on success, and &gt;0 if an error occurs.</p>
+
+</div>
+<h2><a name="authors">Authors</a></h2>
+<div class="section">
+
+<p><code>pipeglade</code> was originally written by
+<span class="author">Bert Burgemeister</span> &lt;trebbu@googlemail.com&gt;.</p>
+
+<p>This version has been heavily modified by <span class="author">the other
+anonymous</span> &lt;ssinclair00073@gmail.com&gt;.</p>
+
+<p class="foot-date">6 February, 2015</p>
+
+</div>
+<h2><a name="license">License</a></h2>
+<div class="section">
+
+<p>Copyright &copy; 2014, 2015 Bert Burgemeister &lt;trebbu@googlemail.com&gt;</p>
+
+<p>Heavily modified by the other anonymous &lt;ssinclair00073@gmail.com&gt;</p>
+
+<p>The MIT License</p>
+
+<p>Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:</p>
+
+<p>The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.</p>
+
+<p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
+
+</div>
+</body>
+</html>
