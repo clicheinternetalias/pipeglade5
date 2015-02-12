@@ -356,6 +356,15 @@
             <property name="fill">True</property>
           </packing>
         </child>
+
+        <child>
+      <object class="GtkPaned" id="paned1">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="orientation">vertical</property>
+        <property name="position_set">True</property>
+        <property name="position">50</property>
+
         <child>
           <object class="GtkScrolledWindow" id="scroll-error">
             <property name="visible">True</property>
@@ -369,18 +378,21 @@
                 <property name="use_underline">False</property>
                 <property name="wrap">True</property>
                 <property name="selectable">True</property>
+        <property name="valign">start</property>
+        <property name="halign">start</property>
               </object>
               <packing>
-                <property name="expand">False</property>
+                <property name="expand">True</property>
                 <property name="fill">True</property>
               </packing>
             </child>
           </object>
           <packing>
-            <property name="expand">True</property>
-            <property name="fill">True</property>
+            <property name="resize">True</property>
+            <property name="shrink">False</property>
           </packing>
         </child>
+
         <child>
           <object class="GtkScrolledWindow" id="scroll-pages">
             <property name="visible">True</property>
@@ -419,10 +431,18 @@
             </child>
           </object>
           <packing>
+            <property name="resize">True</property>
+            <property name="shrink">False</property>
+          </packing>
+        </child>
+
+      </object>
+          <packing>
             <property name="expand">True</property>
             <property name="fill">True</property>
           </packing>
-        </child>
+    </child>
+
       </object>
     </child>
   </object>
