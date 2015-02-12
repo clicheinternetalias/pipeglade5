@@ -2,6 +2,8 @@
 # PostView - Render, Display, and Convert a PostScript File
 # All because people keep insisting on -DSAFER in their GS-based viewers.
 
+# BUG errors wont display if first page was successfully rendered
+
 # TODO:
 # command line to simply ps/pdf/png conversion
 #
@@ -159,21 +161,13 @@ init_background_color () {
 # Error Display
 ######################################################################
 
-init_errors () {
-  send_command "scroll-error hide"
-}
-
 set_errors () {
   local errors=$(echo "$1" | sed ':a;N;$!ba;s/\n/\\n/g')
   send_command "label-error set_text '$errors'"
-  send_command "scroll-error show"
-  send_command "scroll-pages hide"
 }
 
 clear_errors () {
   send_command "label-error set_text ''"
-  send_command "scroll-error hide"
-  send_command "scroll-pages show"
 }
 
 ######################################################################
@@ -197,22 +191,18 @@ update_document () {
   if [[ $GSOPT_BG -eq 1 ]]; then bg=$GSOPT_BG_FILE; else bg=; fi
 
   render pngalpha $DIR/gsout-%03d.png $bg
-  if [[ ! -e $DIR/gsout-001.png ]]; then
-    set_errors "$ERRORS"
-  else
-    clear_errors
-    page=1
-    index=0
-    PAGE_TOTAL=$(ls $DIR/gsout-*.png | wc -l)
-    for img in $(ls $DIR/gsout-*.png | sort)
-    do
-      send_command "tree-pages append $img 'Page $page of $PAGE_TOTAL' $index"
-      page=$((page + 1))
-      index=$((index + 1))
-    done
-    send_command "tree-pages scroll $CURPAGE"
-    send_command "combo-page-goto select $CURPAGE"
-  fi
+  set_errors "$ERRORS"
+  page=1
+  index=0
+  PAGE_TOTAL=$(ls $DIR/gsout-*.png | wc -l)
+  for img in $(ls $DIR/gsout-*.png | sort)
+  do
+    send_command "tree-pages append $img 'Page $page of $PAGE_TOTAL' $index"
+    page=$((page + 1))
+    index=$((index + 1))
+  done
+  send_command "tree-pages scroll $CURPAGE"
+  send_command "combo-page-goto select $CURPAGE"
   touch $LAST_UPDATE
 }
 
@@ -266,17 +256,16 @@ scroll_delta () { # amount
 # Run GUI
 ######################################################################
 
-./pipeglade/pipeglade -s "''" -i $GUI_IN -o $GUI_OUT postview.glade &
+pipeglade -s "''" -i $GUI_IN -o $GUI_OUT postview.glade &
 PIPEGLADE=$!
 while test ! \( -e $GUI_IN -a -e $GUI_OUT \); do
   # "kill -0": can we talk to it?
-  if kill -0 $PIPEGLADE; then sleep .02; else exit; fi
+  if 2>/dev/null kill -0 $PIPEGLADE; then sleep .02; else exit; fi
 done
 send_command "window maximize"
 init_page_sizes
 init_resolutions
 init_background_color
-init_errors
 update_document
 
 # main loop
